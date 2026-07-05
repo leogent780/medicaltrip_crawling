@@ -36,8 +36,8 @@
   &nbsp;&nbsp;
   <label>지역당 개수: <input type="number" id="max_count" value="15" min="1" max="100" style="width:70px;"></label>
 </fieldset>
-<p style="font-size:13px; color:#777;">네이버 지도 화면이 아니라 네이버 오픈 API로 조회해서 캡차가 뜨지 않는다.
-crawler/.env 에 발급받은 API 키가 설정돼 있어야 동작한다.</p>
+<p style="font-size:13px; color:#777;">네이버 지도 화면을 브라우저로 직접 여는 방식이 아니라 검색결과/플레이스 페이지를
+HTTP 요청으로 조회하는 방식이라 캡차가 훨씬 덜 뜨고, API 키도 필요 없다.</p>
 
 <button id="start">크롤링 시작</button>
 <span id="status" style="margin-left:10px; color:#666;"></span>

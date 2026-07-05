@@ -1,8 +1,7 @@
 """로컬 웹 UI: 지역 체크박스 + 개수 입력 후 버튼 클릭으로 크롤링을 실행한다.
 
-네이버 지도 화면이 아니라 네이버 오픈 API(naver_api_crawler.py)를 사용하므로 캡차가
-뜨지 않는다. 실행 전 crawler/.env 에 NAVER_CLIENT_ID/NAVER_CLIENT_SECRET을 설정해야
-한다 (.env.example 참고).
+naver_place_scraper.py(순수 HTTP 요청 방식)를 사용한다. 지도 화면을 브라우저로 직접
+자동화하지 않아서 캡차가 훨씬 덜 뜨고, API 키 발급도 필요 없다.
 
 사용법:
     pip install -r requirements.txt
@@ -16,7 +15,7 @@ from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request, send_file
 
-from naver_api_crawler import crawl, get_credentials, save_excel
+from naver_place_scraper import crawl, save_excel
 
 app = Flask(__name__)
 
@@ -60,11 +59,6 @@ def start_crawl():
 
     if not regions:
         return jsonify({"error": "지역을 최소 1개 선택하거나 입력해줘"}), 400
-
-    try:
-        get_credentials()
-    except RuntimeError as e:
-        return jsonify({"error": str(e)}), 400
 
     try:
         max_count = int(data.get("max_count") or 15)

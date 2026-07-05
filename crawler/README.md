@@ -1,35 +1,24 @@
 # 서울 에스테틱 크롤러
 
 지역명 + 키워드(기본 "에스테틱")로 업체를 찾아서 주소/전화번호/인스타그램/카카오톡채널/
-홈페이지/첫방문이벤트를 모아 엑셀로 저장한다. 두 가지 방식이 있다:
+첫방문이벤트를 모아 엑셀로 저장한다. 세 가지 방식이 있다.
 
-| | `naver_api_crawler.py` (추천) | `naver_esthetic_crawler.py` |
-|---|---|---|
-| 방식 | 네이버 공식 오픈 API (지역검색+블로그검색) | 네이버 지도 화면 직접 자동화 (Playwright) |
-| 캡차 | 없음 | 뜰 수 있음 |
-| 준비물 | 네이버 API 키 발급 (무료) | 없음 |
-| 정확도 | API 스펙상 쿼리당 5건 제한이라 여러 쿼리로 보완 | 지도에 뜨는 대로 다 가져올 수 있음 |
+| | `naver_place_scraper.py` (기본/추천) | `naver_api_crawler.py` | `naver_esthetic_crawler.py` |
+|---|---|---|---|
+| 방식 | 검색결과+플레이스 페이지를 순수 HTTP 요청으로 조회 | 네이버 공식 오픈 API | 네이버 지도 화면 직접 자동화 (Playwright) |
+| 캡차 | 거의 안 뜸 | 없음 | 뜰 수 있음 |
+| API 키 | 불필요 | 필요 (무료 발급) | 불필요 |
+| 데이터 소스 | 비공식 내부 엔드포인트 (구조 바뀌면 깨질 수 있음) | 공식 계약 (지역검색 쿼리당 5건 제한) | 실제 화면에 보이는 그대로 |
 
-특별한 이유가 없으면 **API 방식**을 쓰는 걸 추천한다.
+`webapp.py`는 기본적으로 **`naver_place_scraper.py`**를 사용한다. 이게 안 되거나 막히면
+`naver_api_crawler.py`(공식 API, 키 발급 필요)로 바꿔서 써도 된다.
 
-## 1. API 방식 (추천, 캡차 없음)
+## 1. 기본 방식: naver_place_scraper.py (API 키 불필요)
 
-### 준비: 네이버 API 키 발급
-1. https://developers.naver.com/apps 접속 → 로그인 → "애플리케이션 등록"
-2. 사용 API에서 **검색** 체크하고 등록
-3. 발급된 **Client ID / Client Secret** 확인
-4. `crawler/.env.example` 파일을 복사해서 `crawler/.env` 로 저장하고 값 채우기:
-   ```
-   NAVER_CLIENT_ID=발급받은값
-   NAVER_CLIENT_SECRET=발급받은값
-   ```
-   (`.env`는 git에 올라가지 않으니 키가 저장소에 노출되지 않는다)
-
-### 설치 및 실행
 ```bash
 cd crawler
 pip install -r requirements.txt
-python naver_api_crawler.py --regions 명동 성수 홍대 강남 압구정 신사 용산 --max-per-region 15
+python naver_place_scraper.py --regions 명동 성수 홍대 강남 압구정 신사 용산 --max-per-region 15
 ```
 
 ### 웹 화면으로 실행
@@ -39,36 +28,48 @@ python webapp.py
 브라우저에서 `http://127.0.0.1:5000` 접속 → 지역 체크박스 선택, 개수 입력 →
 "크롤링 시작" 클릭. 진행 로그가 화면에 쌓이다가 끝나면 "엑셀 다운로드" 버튼이 뜬다.
 
-### 알아둘 점 (API 방식)
-- 네이버 지역검색 API는 **쿼리 하나당 최대 5건만** 돌려주고 페이지네이션도 없다(공식
-  스펙 제약). 그래서 지역 하나에 여러 동네 별칭 x 키워드 조합(예: "가로수길 에스테틱",
-  "신사동 피부관리", "신사동 왁싱" ...)으로 여러 번 검색해서 모으고 중복 제거한다.
-  `naver_api_crawler.py`의 `REGION_ALIASES`, `KEYWORD_VARIANTS`를 수정하면 조합을
-  늘리거나 줄일 수 있다.
-- 인스타그램/첫방문이벤트는 업체명으로 **블로그 검색**을 돌려서 후기 글 본문에서 "@아이디"
-  패턴이나 "첫방문" 문구를 찾는 방식이라, 블로그에 언급이 없는 업체는 빈 칸으로 남는다 —
-  없는 걸 지어내지 않는다.
-- 하루 호출 한도가 넉넉하지만(API 종류별 25,000건/일), 그래도 초당 호출 사이에
-  `API_DELAY`만큼 대기한다. 임의로 줄이지 말 것.
+### 알아둘 점
+- `search.naver.com`의 플레이스 검색결과 페이지에 내장된 JSON을 정규식으로 그대로
+  뽑는 방식이다. 공식 API가 아니라서 네이버가 마크업/필드 구성을 바꾸면 깨질 수 있다.
+  그런 경우 알려주면 정규식을 다시 맞춰줄 수 있다.
+- 인스타그램/카카오톡채널은 `map.naver.com/p/api/place/summary/{id}`,
+  `m.place.naver.com/place/{id}/home` 두 곳의 원문에서 정규식으로 찾는다. 업체가 이
+  정보를 등록해두지 않았으면 빈 칸으로 남는다.
+- 첫방문 이벤트는 `m.place.naver.com/place/{id}/feed`(소식탭)에서 "첫방문" 문구가
+  있는지만 확인한다.
+- `SEARCH_DELAY`(검색 사이 1초), `DETAIL_DELAY`(상세조회 사이 0.5초)를 임의로 줄이지
+  말 것. 그래도 캡차가 자주 뜨면 `--max-per-region`을 줄이고 지역 수를 나눠서 여러
+  번에 걸쳐 돌리는 걸 추천.
 
-## 2. 브라우저 자동화 방식 (캡차 뜰 수 있음)
+## 2. 대안: naver_api_crawler.py (네이버 공식 오픈 API)
 
-네이버 지도 화면을 Playwright로 직접 열어서 훑는 방식. API로 안 되는 걸 보완하고 싶을 때만
-보조적으로 사용 권장.
+캡차 위험을 완전히 없애고 싶으면 이 방식을 쓴다. 다만 API 키 발급이 필요하고, 지역검색
+API가 쿼리당 5건 제한이라 커버리지가 좀 더 좁다.
+
+1. https://developers.naver.com/apps → 애플리케이션 등록 → 사용 API에서 "검색" 체크
+2. 발급받은 Client ID/Secret을 `crawler/.env`에 저장 (`.env.example` 참고)
+3. 실행:
+   ```bash
+   python naver_api_crawler.py --regions 명동 성수 홍대 --max-per-region 15
+   ```
+4. `webapp.py`에서 이 방식을 쓰고 싶으면 `from naver_place_scraper import ...`를
+   `from naver_api_crawler import ...`로 바꾸면 된다.
+
+## 3. 대안: naver_esthetic_crawler.py (브라우저 자동화, 캡차 위험)
+
+네이버 지도 화면을 Playwright로 직접 열어서 훑는 방식. 위 두 방식으로 안 되는 정보를
+보완하고 싶을 때만 보조적으로 사용 권장.
 
 ```bash
 playwright install chromium
 python naver_esthetic_crawler.py --regions 명동 --max-per-region 15
 ```
 - `--headless`: 브라우저 창 숨김 (기본은 창을 띄움 — 캡차 뜨면 직접 풀어주기 편해서)
-- `--debug`: 단계별 스크린샷을 `debug/`에 저장, 문제 생기면 확인용
-
-캡차가 자주 뜨면 `--max-per-region`을 줄이고 `REQUEST_DELAY`(코드 상단)를 늘려서 천천히
-돌리는 게 낫다. 탐지 우회 도구(undetected-chromedriver 등)는 의도적으로 넣지 않았다 —
-이건 네이버 이용약관을 벗어나는 방향이라, 그보다는 API 방식을 쓰는 걸 권한다.
+- `--debug`: 단계별 스크린샷을 `debug/`에 저장
 
 ## 공통 주의사항
-- 개인적인 리서치 목적의 소규모 수집을 전제로 만들었다. 대량/상업적 재판매 용도로 쓰지 말 것.
+- 개인적인 리서치 목적의 소규모 수집을 전제로 만들었다. 대량/상업적 재판매 용도로 쓰지
+  말 것. 탐지 우회 전용 도구(undetected-chromedriver 등)는 의도적으로 넣지 않았다.
 - 이 코드는 실제 네이버 서버에 접속해 테스트하지 못한 상태로 작성됐다(작업 환경 네트워크
-  정책상 외부 접속이 막혀 있었음). 로컬에서 처음 돌려보고 안 되는 부분이 있으면 알려주면
-  된다.
+  정책상 외부 접속이 막혀 있었음). 로직은 가짜 응답으로 단위 테스트했지만, 실제 응답
+  형식과 다를 수 있다. 로컬에서 돌려보고 안 되는 부분이 있으면 알려주면 된다.
