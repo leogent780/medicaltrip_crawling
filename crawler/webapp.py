@@ -1,8 +1,11 @@
 """로컬 웹 UI: 지역 체크박스 + 개수 입력 후 버튼 클릭으로 크롤링을 실행한다.
 
+네이버 지도 화면이 아니라 네이버 오픈 API(naver_api_crawler.py)를 사용하므로 캡차가
+뜨지 않는다. 실행 전 crawler/.env 에 NAVER_CLIENT_ID/NAVER_CLIENT_SECRET을 설정해야
+한다 (.env.example 참고).
+
 사용법:
     pip install -r requirements.txt
-    playwright install chromium
     python webapp.py
 그다음 브라우저에서 http://127.0.0.1:5000 접속.
 """
@@ -12,9 +15,8 @@ import uuid
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request, send_file
-from playwright.sync_api import sync_playwright
 
-from naver_esthetic_crawler import crawl_region, save_excel
+from naver_api_crawler import crawl, get_credentials, save_excel
 
 app = Flask(__name__)
 
@@ -26,27 +28,16 @@ RESULTS_DIR.mkdir(exist_ok=True)
 JOBS = {}
 
 
-def run_job(job_id, regions, keyword, max_count, headless):
+def run_job(job_id, regions, keyword, max_count):
     job = JOBS[job_id]
 
     def log(msg):
         job["logs"].append(msg)
 
-    all_places = []
     try:
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=headless)
-            page = browser.new_page()
-            for region in regions:
-                try:
-                    places = crawl_region(page, region, keyword, max_count, log=log)
-                    all_places.extend(places)
-                except Exception as e:
-                    log(f"[ERROR] '{region}' 처리 중 오류: {e}")
-            browser.close()
-
+        businesses = crawl(regions, keyword, max_count, log=log)
         output_path = RESULTS_DIR / f"{job_id}.xlsx"
-        save_excel(all_places, output_path, log=log)
+        save_excel(businesses, output_path, log=log)
         job["file"] = str(output_path)
         job["status"] = "done"
     except Exception as e:
@@ -71,18 +62,22 @@ def start_crawl():
         return jsonify({"error": "지역을 최소 1개 선택하거나 입력해줘"}), 400
 
     try:
+        get_credentials()
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 400
+
+    try:
         max_count = int(data.get("max_count") or 15)
     except ValueError:
         return jsonify({"error": "개수는 숫자로 입력해줘"}), 400
     max_count = max(1, min(max_count, 100))
 
     keyword = (data.get("keyword") or "에스테틱").strip()
-    headless = bool(data.get("headless"))
 
     job_id = uuid.uuid4().hex[:8]
     JOBS[job_id] = {"status": "running", "logs": [], "file": None}
     threading.Thread(
-        target=run_job, args=(job_id, regions, keyword, max_count, headless), daemon=True
+        target=run_job, args=(job_id, regions, keyword, max_count), daemon=True
     ).start()
     return jsonify({"job_id": job_id})
 
