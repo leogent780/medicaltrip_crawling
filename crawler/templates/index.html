@@ -32,9 +32,10 @@
 
 <fieldset>
   <legend>검색 옵션</legend>
-  <label>키워드: <input type="text" id="keyword" value="에스테틱" style="width:120px;"></label>
+  <label>키워드: <input type="text" id="keyword" value="에스테틱" style="width:260px;" placeholder="콤마로 여러 개: 에스테틱, 스파, 마사지, 헤어, 메이크업"></label>
   &nbsp;&nbsp;
-  <label>지역당 개수: <input type="number" id="max_count" value="15" min="1" max="100" style="width:70px;"></label>
+  <label>키워드당 개수: <input type="number" id="max_count" value="15" min="1" max="100" style="width:70px;"></label>
+  <div style="font-size:12px; color:#888; margin-top:4px;">콤마로 여러 키워드 입력 가능 (예: 에스테틱, 스파, 마사지). 지역 x 키워드 조합마다 최대 입력한 개수만큼 찾고, 겹치는 업체는 자동으로 합쳐진다.</div>
 </fieldset>
 <p style="font-size:13px; color:#777;">네이버 지도 화면을 브라우저로 직접 여는 방식이 아니라 검색결과/플레이스 페이지를
 HTTP 요청으로 조회하는 방식이라 캡차가 훨씬 덜 뜨고, API 키도 필요 없다.</p>

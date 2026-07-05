@@ -27,14 +27,14 @@ RESULTS_DIR.mkdir(exist_ok=True)
 JOBS = {}
 
 
-def run_job(job_id, regions, keyword, max_count):
+def run_job(job_id, regions, keywords, max_count):
     job = JOBS[job_id]
 
     def log(msg):
         job["logs"].append(msg)
 
     try:
-        businesses = crawl(regions, keyword, max_count, log=log)
+        businesses = crawl(regions, keywords, max_count, log=log)
         output_path = RESULTS_DIR / f"{job_id}.xlsx"
         save_excel(businesses, output_path, log=log)
         job["file"] = str(output_path)
@@ -66,12 +66,12 @@ def start_crawl():
         return jsonify({"error": "개수는 숫자로 입력해줘"}), 400
     max_count = max(1, min(max_count, 100))
 
-    keyword = (data.get("keyword") or "에스테틱").strip()
+    keywords = (data.get("keyword") or "에스테틱").strip()
 
     job_id = uuid.uuid4().hex[:8]
     JOBS[job_id] = {"status": "running", "logs": [], "file": None}
     threading.Thread(
-        target=run_job, args=(job_id, regions, keyword, max_count), daemon=True
+        target=run_job, args=(job_id, regions, keywords, max_count), daemon=True
     ).start()
     return jsonify({"job_id": job_id})
 

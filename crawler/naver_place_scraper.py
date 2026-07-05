@@ -65,6 +65,14 @@ class Place:
     instagram: str = ""
     kakao_channel: str = ""
     first_visit_event: str = ""
+    matched_keywords: str = ""
+
+
+def add_matched_keyword(place, keyword):
+    existing = [k for k in place.matched_keywords.split(",") if k]
+    if keyword not in existing:
+        existing.append(keyword)
+    place.matched_keywords = ",".join(existing)
 
 
 def build_queries(region, keyword):
@@ -134,25 +142,33 @@ def enrich_place(session, place, log=print):
     return place
 
 
-def crawl(regions, keyword, max_per_region, log=print):
+def crawl(regions, keywords, max_per_region, log=print):
+    if isinstance(keywords, str):
+        keywords = [k.strip() for k in keywords.split(",") if k.strip()]
+    if not keywords:
+        keywords = ["에스테틱"]
+
     session = make_session()
     all_places = {}
 
     for region in regions:
-        log(f"[INFO] === {region} 검색 시작 ===")
-        for query in build_queries(region, keyword):
-            log(f"[INFO] 검색: {query}")
-            found = search_places(session, query, region, log=log)
-            new = 0
-            for p in found:
-                if p.id not in all_places:
-                    all_places[p.id] = p
-                    new += 1
-            region_count = sum(1 for x in all_places.values() if x.region == region)
-            log(f"  -> {new}개 신규 (지역 누적 {region_count}개)")
-            time.sleep(SEARCH_DELAY)
-            if region_count >= max_per_region:
-                break
+        for keyword in keywords:
+            log(f"[INFO] === {region} / {keyword} 검색 시작 ===")
+            found_ids_this_keyword = set()
+            for query in build_queries(region, keyword):
+                log(f"[INFO] 검색: {query}")
+                found = search_places(session, query, region, log=log)
+                new = 0
+                for p in found:
+                    found_ids_this_keyword.add(p.id)
+                    if p.id not in all_places:
+                        all_places[p.id] = p
+                        new += 1
+                    add_matched_keyword(all_places[p.id], keyword)
+                log(f"  -> {new}개 신규 (이 키워드 누적 {len(found_ids_this_keyword)}개)")
+                time.sleep(SEARCH_DELAY)
+                if len(found_ids_this_keyword) >= max_per_region:
+                    break
 
     log(f"\n[INFO] 총 {len(all_places)}곳 발견. 상세정보(인스타/카톡/첫방문이벤트) 조회 중...")
     for place in all_places.values():
@@ -167,7 +183,7 @@ def save_excel(places, output_path, log=print):
     wb = Workbook()
     ws = wb.active
     ws.title = "에스테틱 리스트"
-    headers = ["지역", "업체명", "주소", "전화번호", "인스타그램",
+    headers = ["지역", "업체명", "검색키워드", "주소", "전화번호", "인스타그램",
                "카카오톡채널", "첫방문이벤트", "네이버플레이스ID"]
     ws.append(headers)
 
@@ -177,7 +193,7 @@ def save_excel(places, output_path, log=print):
         if key in seen:
             continue
         seen.add(key)
-        ws.append([p.region, p.name, p.address, p.phone, p.instagram,
+        ws.append([p.region, p.name, p.matched_keywords, p.address, p.phone, p.instagram,
                    p.kakao_channel, p.first_visit_event, p.id])
 
     for i, h in enumerate(headers, start=1):
@@ -191,12 +207,13 @@ def main():
     parser = argparse.ArgumentParser(description="네이버 검색/플레이스 HTTP 기반 에스테틱 크롤러")
     parser.add_argument("--regions", nargs="+",
                          default=["명동", "성수", "홍대", "강남", "압구정", "신사", "용산"])
-    parser.add_argument("--keyword", default="에스테틱")
+    parser.add_argument("--keywords", nargs="+", default=["에스테틱"],
+                         help="예: --keywords 에스테틱 스파 마사지 헤어 메이크업")
     parser.add_argument("--max-per-region", type=int, default=15)
     parser.add_argument("--output", default="seoul_esthetic_list.xlsx")
     args = parser.parse_args()
 
-    places = crawl(args.regions, args.keyword, args.max_per_region)
+    places = crawl(args.regions, args.keywords, args.max_per_region)
     save_excel(places, args.output)
 
 

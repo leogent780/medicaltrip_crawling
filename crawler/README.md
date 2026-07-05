@@ -18,15 +18,19 @@
 ```bash
 cd crawler
 pip install -r requirements.txt
-python naver_place_scraper.py --regions 명동 성수 홍대 강남 압구정 신사 용산 --max-per-region 15
+python naver_place_scraper.py --regions 명동 성수 홍대 강남 압구정 신사 용산 \
+  --keywords 에스테틱 스파 마사지 헤어 메이크업 --max-per-region 15
 ```
+`--keywords`에 여러 개를 주면 지역 x 키워드 조합마다 각각 검색하고, 여러 키워드에
+겹치는 업체는 하나로 합쳐서 "검색키워드" 칸에 어떤 키워드로 잡혔는지 모아서 보여준다.
 
 ### 웹 화면으로 실행
 ```bash
 python webapp.py
 ```
-브라우저에서 `http://127.0.0.1:5000` 접속 → 지역 체크박스 선택, 개수 입력 →
-"크롤링 시작" 클릭. 진행 로그가 화면에 쌓이다가 끝나면 "엑셀 다운로드" 버튼이 뜬다.
+브라우저에서 `http://127.0.0.1:5000` 접속 → 지역 체크박스 선택, 키워드 칸에 콤마로
+여러 개 입력(예: `에스테틱, 스파, 마사지, 헤어, 메이크업`), 개수 입력 → "크롤링 시작"
+클릭. 진행 로그가 화면에 쌓이다가 끝나면 "엑셀 다운로드" 버튼이 뜬다.
 
 ### 알아둘 점
 - `search.naver.com`의 플레이스 검색결과 페이지에 내장된 JSON을 정규식으로 그대로
