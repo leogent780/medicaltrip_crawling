@@ -153,15 +153,15 @@ def enrich_from_entry(frame, place, debug_dir=None, tag=""):
         frame.page.screenshot(path=str(debug_dir / f"{tag}_entry.png"))
 
 
-def crawl_region(page, region, keyword, max_count, debug_dir=None):
+def crawl_region(page, region, keyword, max_count, debug_dir=None, log=print):
     query = f"{region} {keyword}"
-    print(f"[INFO] 검색: {query}")
+    log(f"[INFO] 검색: {query}")
     page.goto(f"https://map.naver.com/p/search/{query}", timeout=NAV_TIMEOUT)
     polite_sleep()
 
     frame = get_search_frame(page)
     items = collect_list_items(frame, max_count, debug_dir=debug_dir, tag=f"{region}_search")
-    print(f"[INFO]  -> {len(items)}개 항목 발견")
+    log(f"[INFO]  -> {len(items)}개 항목 발견")
 
     places = []
     for idx, item in enumerate(items):
@@ -176,15 +176,15 @@ def crawl_region(page, region, keyword, max_count, debug_dir=None):
             place.naver_url = entry_frame.url
             enrich_from_entry(entry_frame, place, debug_dir=debug_dir, tag=f"{region}_{idx}_{name}")
         except Exception as e:
-            print(f"    [WARN] '{name}' 상세정보 수집 실패: {e}")
+            log(f"    [WARN] '{name}' 상세정보 수집 실패: {e}")
         places.append(place)
-        print(f"    - {place.name} | {place.address} | IG:{place.instagram or '-'}")
+        log(f"    - {place.name} | {place.address} | IG:{place.instagram or '-'}")
         polite_sleep()
 
     return places
 
 
-def save_excel(places, output_path):
+def save_excel(places, output_path, log=print):
     wb = Workbook()
     ws = wb.active
     ws.title = "에스테틱 리스트"
@@ -205,7 +205,7 @@ def save_excel(places, output_path):
         ws.column_dimensions[get_column_letter(i)].width = max(14, len(h) + 4)
 
     wb.save(output_path)
-    print(f"[INFO] 엑셀 저장 완료: {output_path} (총 {len(seen)}곳)")
+    log(f"[INFO] 엑셀 저장 완료: {output_path} (총 {len(seen)}곳)")
 
 
 def main():
