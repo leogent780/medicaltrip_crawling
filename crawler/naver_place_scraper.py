@@ -89,31 +89,66 @@ def build_queries(region, keyword):
     return [f"서울 {alias} {keyword}" for alias in aliases]
 
 
-def search_places(session, query, region, debug_dir=None, log=print):
-    places = []
+MAX_SEARCH_PAGES = 5
+
+
+def _parse_search_page(text):
+    ids = re.findall(r'"id"\s*:\s*"(\d{7,})"', text)
+    names = re.findall(r'"name"\s*:\s*"([^"]{2,30})"', text)
+    addresses = re.findall(r'"roadAddress"\s*:\s*"([^"]*)"', text)
+    phones = re.findall(r'"phone"\s*:\s*"([^"]*)"', text)
+    return [
+        {"id": pid,
+         "name": names[i] if i < len(names) else "",
+         "address": addresses[i] if i < len(addresses) else "",
+         "phone": phones[i] if i < len(phones) else ""}
+        for i, pid in enumerate(ids)
+    ]
+
+
+def search_places(session, query, region, max_results=70, debug_dir=None, log=print):
+    """search.naver.com의 place 탭은 한 번에 미리보기 몇 개만 보여주는 것 같아서,
+    start 페이지네이션을 시도한다. 페이지가 새 업체를 안 주면 바로 멈춘다
+    (네이버가 start를 무시해도 안전하게 종료됨)."""
     url = "https://search.naver.com/search.naver"
-    params = {"where": "place", "query": query, "display": 70}
-    try:
-        resp = session.get(url, params=params, timeout=15)
+    safe_name = re.sub(r"[^0-9A-Za-z가-힣]+", "_", query)
+    found = {}
+
+    start = 1
+    for page in range(MAX_SEARCH_PAGES):
+        if len(found) >= max_results:
+            break
+        params = {"where": "place", "query": query, "display": 70, "start": start}
+        try:
+            resp = session.get(url, params=params, timeout=15)
+        except requests.RequestException as e:
+            log(f"  [오류] '{query}' 검색 실패: {e}")
+            break
+
         text = resp.text
         if debug_dir:
-            safe_name = re.sub(r"[^0-9A-Za-z가-힣]+", "_", query)
-            (debug_dir / f"search_{safe_name}.html").write_text(text, encoding="utf-8")
-        ids = re.findall(r'"id"\s*:\s*"(\d{7,})"', text)
-        names = re.findall(r'"name"\s*:\s*"([^"]{2,30})"', text)
-        addresses = re.findall(r'"roadAddress"\s*:\s*"([^"]*)"', text)
-        phones = re.findall(r'"phone"\s*:\s*"([^"]*)"', text)
-        for i, pid in enumerate(ids):
-            places.append(Place(
-                id=pid,
-                region=region,
-                name=names[i] if i < len(names) else "",
-                address=addresses[i] if i < len(addresses) else "",
-                phone=phones[i] if i < len(phones) else "",
-            ))
-    except requests.RequestException as e:
-        log(f"  [오류] '{query}' 검색 실패: {e}")
-    return places
+            (debug_dir / f"search_{safe_name}_p{page + 1}.html").write_text(text, encoding="utf-8")
+
+        page_items = _parse_search_page(text)
+        new_count = 0
+        for item in page_items:
+            if item["id"] not in found:
+                found[item["id"]] = item
+                new_count += 1
+
+        if page == 0:
+            log(f"    (검색 1페이지: {len(page_items)}개 파싱됨)")
+        if new_count == 0:
+            break
+
+        start += len(page_items) if page_items else 15
+        time.sleep(SEARCH_DELAY)
+
+    return [
+        Place(id=item["id"], region=region, name=item["name"],
+              address=item["address"], phone=item["phone"])
+        for item in found.values()
+    ]
 
 
 def _extract_instagram(text, loose=False):
