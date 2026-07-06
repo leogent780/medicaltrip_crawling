@@ -39,7 +39,9 @@ REGION_ALIASES = {
 
 INSTAGRAM_PATTERNS = [
     re.compile(r"instagram\.com/([A-Za-z0-9._]{2,30})"),
-    re.compile(r'"instagram"\s*:\s*"([^"]+)"'),
+    # "instagram":"<한글 라벨>" 같은 공유버튼 UI 텍스트를 계정으로 오인하지 않도록
+    # 값도 실제 계정명 문자셋으로 제한한다 ([^"]+ 로 뒀다가 "인스타그램" 같은 걸 잘못 잡았음).
+    re.compile(r'"instagram"\s*:\s*"([A-Za-z0-9._]{2,30})"'),
     re.compile(r'instaId["\s:]+([A-Za-z0-9._]{2,30})'),
 ]
 # 블로그 후기 글은 링크 없이 "@계정명"만 텍스트로 쓰는 경우가 많아 보조로 사용.
