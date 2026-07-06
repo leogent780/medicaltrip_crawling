@@ -89,13 +89,16 @@ def build_queries(region, keyword):
     return [f"서울 {alias} {keyword}" for alias in aliases]
 
 
-def search_places(session, query, region, log=print):
+def search_places(session, query, region, debug_dir=None, log=print):
     places = []
     url = "https://search.naver.com/search.naver"
     params = {"where": "place", "query": query, "display": 70}
     try:
         resp = session.get(url, params=params, timeout=15)
         text = resp.text
+        if debug_dir:
+            safe_name = re.sub(r"[^0-9A-Za-z가-힣]+", "_", query)
+            (debug_dir / f"search_{safe_name}.html").write_text(text, encoding="utf-8")
         ids = re.findall(r'"id"\s*:\s*"(\d{7,})"', text)
         names = re.findall(r'"name"\s*:\s*"([^"]{2,30})"', text)
         addresses = re.findall(r'"roadAddress"\s*:\s*"([^"]*)"', text)
@@ -209,7 +212,7 @@ def crawl(regions, keywords, max_per_region, log=print, debug_dir=None):
             found_ids_this_keyword = set()
             for query in build_queries(region, keyword):
                 log(f"[INFO] 검색: {query}")
-                found = search_places(session, query, region, log=log)
+                found = search_places(session, query, region, debug_dir=debug_dir, log=log)
                 new = 0
                 for p in found:
                     found_ids_this_keyword.add(p.id)
