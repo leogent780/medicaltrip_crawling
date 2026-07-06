@@ -17,6 +17,7 @@ import argparse
 import re
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 import requests
 from openpyxl import Workbook
@@ -24,6 +25,7 @@ from openpyxl.utils import get_column_letter
 
 SEARCH_DELAY = 1.0
 DETAIL_DELAY = 0.5
+BLOG_DELAY = 0.5
 
 REGION_ALIASES = {
     "명동": ["명동", "을지로입구", "충무로"],
@@ -40,6 +42,13 @@ INSTAGRAM_PATTERNS = [
     re.compile(r'"instagram"\s*:\s*"([^"]+)"'),
     re.compile(r'instaId["\s:]+([A-Za-z0-9._]{2,30})'),
 ]
+# 블로그 후기 글은 링크 없이 "@계정명"만 텍스트로 쓰는 경우가 많아 보조로 사용.
+# 이메일 주소를 계정으로 오인하기 쉬워서 흔한 메일 도메인은 걸러낸다.
+BLOG_INSTAGRAM_RE = re.compile(r"(?<![\w.])@([A-Za-z0-9](?:[A-Za-z0-9._]{1,28})[A-Za-z0-9])")
+EMAIL_LIKE_DOMAINS = {
+    "gmail.com", "naver.com", "daum.net", "hanmail.net", "nate.com",
+    "kakao.com", "hotmail.com", "yahoo.com", "icloud.com", "outlook.com",
+}
 KAKAO_RE = re.compile(r"pf\.kakao\.com/[A-Za-z0-9_]+")
 TAG_RE = re.compile(r"<[^>]+>")
 IGNORE_INSTA_HANDLES = {"p", "reel", "explore", "stories", "accounts", ""}
@@ -104,7 +113,31 @@ def search_places(session, query, region, log=print):
     return places
 
 
-def enrich_place(session, place, log=print):
+def _extract_instagram(text, loose=False):
+    for pattern in INSTAGRAM_PATTERNS:
+        m = pattern.search(text)
+        if m:
+            handle = m.group(1).strip("/").strip('"')
+            if handle.lower() not in IGNORE_INSTA_HANDLES:
+                return f"https://www.instagram.com/{handle}/"
+    if loose:
+        m = BLOG_INSTAGRAM_RE.search(text)
+        if m:
+            handle = m.group(1)
+            if handle.lower() not in IGNORE_INSTA_HANDLES and handle.lower() not in EMAIL_LIKE_DOMAINS:
+                return f"https://www.instagram.com/{handle}/"
+    return ""
+
+
+def _extract_first_visit(text):
+    idx = text.find("첫방문")
+    if idx == -1:
+        return ""
+    start = text.rfind(" ", 0, max(0, idx - 15)) + 1
+    return TAG_RE.sub(" ", text[start: idx + 60]).strip()
+
+
+def enrich_place(session, place, debug_dir=None, log=print):
     detail_urls = [
         f"https://map.naver.com/p/api/place/summary/{place.id}",
         f"https://m.place.naver.com/place/{place.id}/home",
@@ -117,13 +150,10 @@ def enrich_place(session, place, log=print):
         except requests.RequestException:
             continue
 
-    for pattern in INSTAGRAM_PATTERNS:
-        m = pattern.search(combined_text)
-        if m:
-            handle = m.group(1).strip("/").strip('"')
-            if handle.lower() not in IGNORE_INSTA_HANDLES:
-                place.instagram = f"https://www.instagram.com/{handle}/"
-                break
+    if debug_dir:
+        (debug_dir / f"{place.id}_detail.txt").write_text(combined_text, encoding="utf-8")
+
+    place.instagram = _extract_instagram(combined_text)
 
     m = KAKAO_RE.search(combined_text)
     if m:
@@ -131,18 +161,40 @@ def enrich_place(session, place, log=print):
 
     try:
         resp = session.get(f"https://m.place.naver.com/place/{place.id}/feed", timeout=10)
-        idx = resp.text.find("첫방문")
-        if idx != -1:
-            start = resp.text.rfind(" ", 0, max(0, idx - 15)) + 1
-            snippet = TAG_RE.sub(" ", resp.text[start: idx + 60])
-            place.first_visit_event = snippet.strip()
+        if debug_dir:
+            (debug_dir / f"{place.id}_feed.txt").write_text(resp.text, encoding="utf-8")
+        place.first_visit_event = _extract_first_visit(resp.text)
     except requests.RequestException:
         pass
+
+    # 플레이스 등록정보에 인스타/첫방문 이벤트가 없으면 블로그 후기에서 보조로 찾는다.
+    if not place.instagram or not place.first_visit_event:
+        find_via_blog(session, place, debug_dir=debug_dir, log=log)
 
     return place
 
 
-def crawl(regions, keywords, max_per_region, log=print):
+def find_via_blog(session, place, debug_dir=None, log=print):
+    query = f"{place.name} {place.region} 인스타그램 후기"
+    try:
+        resp = session.get("https://search.naver.com/search.naver",
+                            params={"where": "post", "query": query}, timeout=10)
+        time.sleep(BLOG_DELAY)
+    except requests.RequestException as e:
+        log(f"    [WARN] 블로그 보조검색 실패: {place.name} - {e}")
+        return
+
+    text = TAG_RE.sub(" ", resp.text)
+    if debug_dir:
+        (debug_dir / f"{place.id}_blog.txt").write_text(text, encoding="utf-8")
+
+    if not place.instagram:
+        place.instagram = _extract_instagram(text, loose=True)
+    if not place.first_visit_event:
+        place.first_visit_event = _extract_first_visit(text)
+
+
+def crawl(regions, keywords, max_per_region, log=print, debug_dir=None):
     if isinstance(keywords, str):
         keywords = [k.strip() for k in keywords.split(",") if k.strip()]
     if not keywords:
@@ -172,7 +224,7 @@ def crawl(regions, keywords, max_per_region, log=print):
 
     log(f"\n[INFO] 총 {len(all_places)}곳 발견. 상세정보(인스타/카톡/첫방문이벤트) 조회 중...")
     for place in all_places.values():
-        enrich_place(session, place, log=log)
+        enrich_place(session, place, debug_dir=debug_dir, log=log)
         log(f"    - {place.name} | {place.address} | IG:{place.instagram or '-'}")
         time.sleep(DETAIL_DELAY)
 
@@ -211,9 +263,16 @@ def main():
                          help="예: --keywords 에스테틱 스파 마사지 헤어 메이크업")
     parser.add_argument("--max-per-region", type=int, default=15)
     parser.add_argument("--output", default="seoul_esthetic_list.xlsx")
+    parser.add_argument("--debug", action="store_true",
+                         help="업체별 상세/피드/블로그 원문 응답을 debug/ 에 저장")
     args = parser.parse_args()
 
-    places = crawl(args.regions, args.keywords, args.max_per_region)
+    debug_dir = None
+    if args.debug:
+        debug_dir = Path("debug")
+        debug_dir.mkdir(exist_ok=True)
+
+    places = crawl(args.regions, args.keywords, args.max_per_region, debug_dir=debug_dir)
     save_excel(places, args.output)
 
 
