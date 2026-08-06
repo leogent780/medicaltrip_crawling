@@ -1,7 +1,8 @@
-# 서울 에스테틱 크롤러
+# 네이버 업체 크롤러 (서울/부산)
 
 지역명 + 키워드(기본 "에스테틱")로 업체를 찾아서 주소/전화번호/인스타그램/카카오톡채널/
-첫방문이벤트를 모아 엑셀로 저장한다. 세 가지 방식이 있다.
+첫방문이벤트를 모아 엑셀로 저장한다. `--city`로 서울/부산을 고를 수 있고, `--keywords`로
+업종(에스테틱, 피부과 등)을 바꿀 수 있다. 세 가지 방식이 있다.
 
 | | `naver_place_scraper.py` (기본/추천) | `naver_api_crawler.py` | `naver_esthetic_crawler.py` |
 |---|---|---|---|
@@ -18,19 +19,31 @@
 ```bash
 cd crawler
 pip install -r requirements.txt
+
+# 서울 에스테틱 (기본값 그대로)
 python naver_place_scraper.py --regions 명동 성수 홍대 강남 압구정 신사 용산 \
   --keywords 에스테틱 스파 마사지 헤어 메이크업 --max-per-region 15
+
+# 부산 피부과 전체 (도시 기본 지역 8곳: 서면/해운대/동래/남포동/부산대/연산동/사상/광안리)
+python naver_place_scraper.py --city 부산 --keywords 피부과 --max-per-region 30
 ```
+`--city`를 생략하면 `서울`이 기본값이고, `--regions`도 생략하면 그 도시의 기본 지역
+목록을 자동으로 쓴다. `REGION_ALIASES`에 도시별로 동네 별칭이 세분화되어 있어서(부산은
+서면=부전동/전포동/가야동/양정동처럼) `--regions`에 직접 넣은 동네가 별칭 사전에 없으면
+그 이름 그대로 한 번만 검색한다(그래도 동작은 하지만 커버리지가 좁을 수 있음).
+
 `--keywords`에 여러 개를 주면 지역 x 키워드 조합마다 각각 검색하고, 여러 키워드에
 겹치는 업체는 하나로 합쳐서 "검색키워드" 칸에 어떤 키워드로 잡혔는지 모아서 보여준다.
+`--output`을 생략하면 `{city}_{keywords}_list.xlsx`로 자동 저장한다.
 
 ### 웹 화면으로 실행
 ```bash
 python webapp.py
 ```
-브라우저에서 `http://127.0.0.1:5000` 접속 → 지역 체크박스 선택, 키워드 칸에 콤마로
-여러 개 입력(예: `에스테틱, 스파, 마사지, 헤어, 메이크업`), 개수 입력 → "크롤링 시작"
-클릭. 진행 로그가 화면에 쌓이다가 끝나면 "엑셀 다운로드" 버튼이 뜬다.
+브라우저에서 `http://127.0.0.1:5000` 접속 → 도시(서울/부산) 선택 시 지역 체크박스가
+해당 도시 목록으로 바뀐다. 지역 체크박스 선택, 키워드 칸에 콤마로 여러 개 입력(예:
+`피부과` 또는 `에스테틱, 스파, 마사지`), 개수 입력 → "크롤링 시작" 클릭. 진행 로그가
+화면에 쌓이다가 끝나면 "엑셀 다운로드" 버튼이 뜬다.
 
 ### 알아둘 점
 - `search.naver.com`의 플레이스 검색결과 페이지에 내장된 JSON을 정규식으로 그대로
@@ -67,6 +80,8 @@ API가 쿼리당 5건 제한이라 커버리지가 좀 더 좁다.
 3. 실행:
    ```bash
    python naver_api_crawler.py --regions 명동 성수 홍대 --max-per-region 15
+   # 부산 피부과
+   python naver_api_crawler.py --city 부산 --keyword 피부과 --max-per-region 15
    ```
 4. `webapp.py`에서 이 방식을 쓰고 싶으면 `from naver_place_scraper import ...`를
    `from naver_api_crawler import ...`로 바꾸면 된다.
@@ -79,6 +94,8 @@ API가 쿼리당 5건 제한이라 커버리지가 좀 더 좁다.
 ```bash
 playwright install chromium
 python naver_esthetic_crawler.py --regions 명동 --max-per-region 15
+# 부산 피부과
+python naver_esthetic_crawler.py --city 부산 --keyword 피부과 --max-per-region 30
 ```
 - `--headless`: 브라우저 창 숨김 (기본은 창을 띄움 — 캡차 뜨면 직접 풀어주기 편해서)
 - `--debug`: 단계별 스크린샷을 `debug/`에 저장
@@ -87,5 +104,7 @@ python naver_esthetic_crawler.py --regions 명동 --max-per-region 15
 - 개인적인 리서치 목적의 소규모 수집을 전제로 만들었다. 대량/상업적 재판매 용도로 쓰지
   말 것. 탐지 우회 전용 도구(undetected-chromedriver 등)는 의도적으로 넣지 않았다.
 - 이 코드는 실제 네이버 서버에 접속해 테스트하지 못한 상태로 작성됐다(작업 환경 네트워크
-  정책상 외부 접속이 막혀 있었음). 로직은 가짜 응답으로 단위 테스트했지만, 실제 응답
-  형식과 다를 수 있다. 로컬에서 돌려보고 안 되는 부분이 있으면 알려주면 된다.
+  정책상 `search.naver.com`, `map.naver.com`, `m.place.naver.com`, `openapi.naver.com`
+  전부 접속이 막혀 있었음 — 부산 피부과 버전도 동일). 로직은 가짜 응답/단위 테스트로
+  검증했지만, 실제 응답 형식과 다를 수 있다. 로컬(네이버 접속이 되는 환경)에서 돌려보고
+  안 되는 부분이 있으면 알려주면 된다.

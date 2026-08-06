@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<title>서울 에스테틱 크롤러</title>
+<title>네이버 업체 크롤러</title>
 <style>
   body { font-family: -apple-system, "Malgun Gothic", sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; color: #222; }
   h1 { font-size: 20px; }
@@ -18,13 +18,26 @@
 </style>
 </head>
 <body>
-<h1>서울 에스테틱 크롤러</h1>
+<h1>네이버 업체 크롤러</h1>
+
+<fieldset>
+  <legend>도시</legend>
+  {% for city in cities.keys() %}
+  <label><input type="radio" name="city" value="{{ city }}" {% if loop.first %}checked{% endif %}> {{ city }}</label>
+  {% endfor %}
+</fieldset>
 
 <fieldset>
   <legend>지역 (주요 지역 선택 또는 직접 입력)</legend>
-  {% for r in major_regions %}
-  <label class="region"><input type="checkbox" name="region" value="{{ r }}" checked> {{ r }}</label>
-  {% endfor %}
+  <div id="region_checkboxes">
+    {% for city, regions in cities.items() %}
+    <div class="region-group" data-city="{{ city }}" style="{% if not loop.first %}display:none;{% endif %}">
+      {% for r in regions %}
+      <label class="region"><input type="checkbox" name="region" value="{{ r }}" checked> {{ r }}</label>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
   <div style="margin-top:8px;">
     <label>추가 지역(콤마로 구분): <input type="text" id="custom_regions" placeholder="예: 이태원, 잠실" style="width:260px;"></label>
   </div>
@@ -32,7 +45,7 @@
 
 <fieldset>
   <legend>검색 옵션</legend>
-  <label>키워드: <input type="text" id="keyword" value="에스테틱" style="width:260px;" placeholder="콤마로 여러 개: 에스테틱, 스파, 마사지, 헤어, 메이크업"></label>
+  <label>키워드: <input type="text" id="keyword" value="에스테틱" style="width:260px;" placeholder="콤마로 여러 개: 피부과, 에스테틱, 스파, 마사지"></label>
   &nbsp;&nbsp;
   <label>키워드당 개수: <input type="number" id="max_count" value="15" min="1" max="100" style="width:70px;"></label>
   <div style="font-size:12px; color:#888; margin-top:4px;">콤마로 여러 키워드 입력 가능 (예: 에스테틱, 스파, 마사지). 지역 x 키워드 조합마다 최대 입력한 개수만큼 찾고, 겹치는 업체는 자동으로 합쳐진다.</div>
@@ -57,6 +70,14 @@ const errorEl = document.getElementById('error');
 const downloadEl = document.getElementById('download');
 
 let pollTimer = null;
+
+document.querySelectorAll('input[name="city"]').forEach(radio => {
+  radio.addEventListener('change', () => {
+    document.querySelectorAll('.region-group').forEach(group => {
+      group.style.display = (group.dataset.city === radio.value) ? '' : 'none';
+    });
+  });
+});
 
 function appendLogs(lines) {
   for (const line of lines) {
@@ -101,8 +122,12 @@ startBtn.addEventListener('click', async () => {
   startBtn.disabled = true;
   statusEl.textContent = '시작하는 중...';
 
-  const regions = Array.from(document.querySelectorAll('input[name="region"]:checked')).map(el => el.value);
+  const city = document.querySelector('input[name="city"]:checked').value;
+  const regions = Array.from(
+    document.querySelectorAll(`.region-group[data-city="${city}"] input[name="region"]:checked`)
+  ).map(el => el.value);
   const body = {
+    city,
     regions,
     custom_regions: document.getElementById('custom_regions').value,
     keyword: document.getElementById('keyword').value,

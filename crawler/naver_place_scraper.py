@@ -29,14 +29,32 @@ BLOG_DELAY = 0.5
 
 # 검색 1회당 네이버가 보여주는 미리보기가 7개 안팎이라(확인됨), 별칭을 최대한
 # 잘게 쪼개서 검색 조합 수를 늘리는 게 곧 더 많은 업체를 찾는 방법이다.
+# 도시별로 나뉘어 있고, build_queries()가 --city 값으로 해당 도시의 별칭을 찾는다.
 REGION_ALIASES = {
-    "명동": ["명동", "을지로입구", "충무로", "명동2가", "회현동", "다동", "무교동", "소공동"],
-    "성수": ["성수", "성수동1가", "성수동2가", "뚝섬", "서울숲", "건대입구"],
-    "홍대": ["홍대", "홍대입구", "연남동", "합정", "상수", "서교동"],
-    "강남": ["강남역", "역삼동", "논현동", "삼성동", "도곡동", "대치동"],
-    "압구정": ["압구정", "압구정로데오", "청담동"],
-    "신사": ["신사동", "가로수길", "세로수길"],
-    "용산": ["용산", "이태원", "한남동", "삼각지", "효창동", "서빙고동"],
+    "서울": {
+        "명동": ["명동", "을지로입구", "충무로", "명동2가", "회현동", "다동", "무교동", "소공동"],
+        "성수": ["성수", "성수동1가", "성수동2가", "뚝섬", "서울숲", "건대입구"],
+        "홍대": ["홍대", "홍대입구", "연남동", "합정", "상수", "서교동"],
+        "강남": ["강남역", "역삼동", "논현동", "삼성동", "도곡동", "대치동"],
+        "압구정": ["압구정", "압구정로데오", "청담동"],
+        "신사": ["신사동", "가로수길", "세로수길"],
+        "용산": ["용산", "이태원", "한남동", "삼각지", "효창동", "서빙고동"],
+    },
+    "부산": {
+        "서면": ["서면", "부전동", "전포동", "가야동", "양정동"],
+        "해운대": ["해운대", "우동", "중동", "좌동", "센텀시티"],
+        "동래": ["동래", "명륜동", "온천동", "수안동"],
+        "남포동": ["남포동", "광복동", "중앙동", "부평동", "자갈치"],
+        "부산대": ["부산대", "장전동", "온천장", "금정구"],
+        "연산동": ["연산동", "거제동", "부산시청"],
+        "사상": ["사상", "덕포동", "괘법동"],
+        "광안리": ["광안리", "남천동", "민락동", "수영구"],
+    },
+}
+
+DEFAULT_REGIONS = {
+    "서울": ["명동", "성수", "홍대", "강남", "압구정", "신사", "용산"],
+    "부산": ["서면", "해운대", "동래", "남포동", "부산대", "연산동", "사상", "광안리"],
 }
 
 INSTAGRAM_PATTERNS = [
@@ -88,9 +106,9 @@ def add_matched_keyword(place, keyword):
     place.matched_keywords = ",".join(existing)
 
 
-def build_queries(region, keyword):
-    aliases = REGION_ALIASES.get(region, [region])
-    return [f"서울 {alias} {keyword}" for alias in aliases]
+def build_queries(city, region, keyword):
+    aliases = REGION_ALIASES.get(city, {}).get(region, [region])
+    return [f"{city} {alias} {keyword}" for alias in aliases]
 
 
 MAX_SEARCH_PAGES = 5
@@ -236,7 +254,7 @@ def find_via_blog(session, place, debug_dir=None, log=print):
         place.first_visit_event = _extract_first_visit(text)
 
 
-def crawl(regions, keywords, max_per_region, log=print, debug_dir=None):
+def crawl(regions, keywords, max_per_region, city="서울", log=print, debug_dir=None):
     if isinstance(keywords, str):
         keywords = [k.strip() for k in keywords.split(",") if k.strip()]
     if not keywords:
@@ -249,7 +267,7 @@ def crawl(regions, keywords, max_per_region, log=print, debug_dir=None):
         for keyword in keywords:
             log(f"[INFO] === {region} / {keyword} 검색 시작 ===")
             found_ids_this_keyword = set()
-            for query in build_queries(region, keyword):
+            for query in build_queries(city, region, keyword):
                 log(f"[INFO] 검색: {query}")
                 found = search_places(session, query, region, debug_dir=debug_dir, log=log)
                 new = 0
@@ -276,7 +294,7 @@ def crawl(regions, keywords, max_per_region, log=print, debug_dir=None):
 def save_excel(places, output_path, log=print):
     wb = Workbook()
     ws = wb.active
-    ws.title = "에스테틱 리스트"
+    ws.title = "업체 리스트"
     headers = ["지역", "업체명", "검색키워드", "주소", "전화번호", "인스타그램",
                "카카오톡채널", "첫방문이벤트", "네이버플레이스ID"]
     ws.append(headers)
@@ -298,24 +316,29 @@ def save_excel(places, output_path, log=print):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="네이버 검색/플레이스 HTTP 기반 에스테틱 크롤러")
-    parser.add_argument("--regions", nargs="+",
-                         default=["명동", "성수", "홍대", "강남", "압구정", "신사", "용산"])
+    parser = argparse.ArgumentParser(description="네이버 검색/플레이스 HTTP 기반 업체 크롤러")
+    parser.add_argument("--city", default="서울", choices=sorted(REGION_ALIASES.keys()),
+                         help="지역 별칭 사전을 선택할 도시 (예: 서울, 부산)")
+    parser.add_argument("--regions", nargs="+", default=None,
+                         help="생략하면 --city의 기본 지역 목록을 사용한다")
     parser.add_argument("--keywords", nargs="+", default=["에스테틱"],
-                         help="예: --keywords 에스테틱 스파 마사지 헤어 메이크업")
+                         help="예: --keywords 피부과 또는 --keywords 에스테틱 스파 마사지")
     parser.add_argument("--max-per-region", type=int, default=15)
-    parser.add_argument("--output", default="seoul_esthetic_list.xlsx")
+    parser.add_argument("--output", default=None)
     parser.add_argument("--debug", action="store_true",
                          help="업체별 상세/피드/블로그 원문 응답을 debug/ 에 저장")
     args = parser.parse_args()
+
+    regions = args.regions or DEFAULT_REGIONS.get(args.city, [args.city])
+    output = args.output or f"{args.city}_{'_'.join(args.keywords)}_list.xlsx"
 
     debug_dir = None
     if args.debug:
         debug_dir = Path("debug")
         debug_dir.mkdir(exist_ok=True)
 
-    places = crawl(args.regions, args.keywords, args.max_per_region, debug_dir=debug_dir)
-    save_excel(places, args.output)
+    places = crawl(regions, args.keywords, args.max_per_region, city=args.city, debug_dir=debug_dir)
+    save_excel(places, output)
 
 
 if __name__ == "__main__":

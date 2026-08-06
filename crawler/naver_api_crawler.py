@@ -36,15 +36,35 @@ KAKAO_RE = re.compile(r"pf\.kakao\.com/[A-Za-z0-9_]+")
 # 초당 호출 제한에 여유를 두기 위한 최소 지연. 공식 API라 캡차는 없지만 예의상 유지.
 API_DELAY = 0.3
 
-KEYWORD_VARIANTS = ["피부관리", "왁싱", "스킨케어"]
+KEYWORD_VARIANTS_BY_CITY = {
+    "서울": ["피부관리", "왁싱", "스킨케어"],
+    "부산": ["피부과", "피부관리", "레이저클리닉"],
+}
 REGION_ALIASES = {
-    "명동": ["명동", "을지로입구", "충무로"],
-    "성수": ["성수", "성수동", "뚝섬"],
-    "홍대": ["홍대", "연남동", "합정"],
-    "강남": ["강남역", "역삼동", "논현동"],
-    "압구정": ["압구정", "압구정로데오"],
-    "신사": ["신사동", "가로수길"],
-    "용산": ["용산", "이태원", "한남동"],
+    "서울": {
+        "명동": ["명동", "을지로입구", "충무로"],
+        "성수": ["성수", "성수동", "뚝섬"],
+        "홍대": ["홍대", "연남동", "합정"],
+        "강남": ["강남역", "역삼동", "논현동"],
+        "압구정": ["압구정", "압구정로데오"],
+        "신사": ["신사동", "가로수길"],
+        "용산": ["용산", "이태원", "한남동"],
+    },
+    "부산": {
+        "서면": ["서면", "부전동", "전포동"],
+        "해운대": ["해운대", "우동", "센텀시티"],
+        "동래": ["동래", "명륜동", "온천동"],
+        "남포동": ["남포동", "광복동", "중앙동"],
+        "부산대": ["부산대", "장전동", "온천장"],
+        "연산동": ["연산동", "거제동"],
+        "사상": ["사상", "덕포동"],
+        "광안리": ["광안리", "남천동"],
+    },
+}
+
+DEFAULT_REGIONS = {
+    "서울": ["명동", "성수", "홍대", "강남", "압구정", "신사", "용산"],
+    "부산": ["서면", "해운대", "동래", "남포동", "부산대", "연산동", "사상", "광안리"],
 }
 
 
@@ -135,14 +155,15 @@ def fetch_blog_text(session, url, log=print):
         return ""
 
 
-def collect_region(session, headers, region, keyword, max_count, log=print):
+def collect_region(session, headers, city, region, keyword, max_count, log=print):
     seen = {}
-    aliases = REGION_ALIASES.get(region, [region])
-    keywords = [keyword] + [k for k in KEYWORD_VARIANTS if k != keyword]
+    aliases = REGION_ALIASES.get(city, {}).get(region, [region])
+    variants = KEYWORD_VARIANTS_BY_CITY.get(city, [])
+    keywords = [keyword] + [k for k in variants if k != keyword]
 
     for alias in aliases:
         for kw in keywords:
-            query = f"{alias} {kw}"
+            query = f"{city} {alias} {kw}"
             log(f"[INFO] 지역검색: {query}")
             for item in search_local(session, headers, query, log=log):
                 key = (item["name"], item["address"])
@@ -185,7 +206,7 @@ def _apply_text(biz, text, source_link):
         biz.source_blog = source_link
 
 
-def crawl(regions, keyword, max_per_region, log=print):
+def crawl(regions, keyword, max_per_region, city="서울", log=print):
     client_id, client_secret = get_credentials()
     headers = {"X-Naver-Client-Id": client_id, "X-Naver-Client-Secret": client_secret}
     session = requests.Session()
@@ -193,7 +214,7 @@ def crawl(regions, keyword, max_per_region, log=print):
     all_businesses = []
     for region in regions:
         log(f"[INFO] === {region} 수집 시작 ===")
-        raw_items = collect_region(session, headers, region, keyword, max_per_region, log=log)
+        raw_items = collect_region(session, headers, city, region, keyword, max_per_region, log=log)
         log(f"[INFO]  -> {len(raw_items)}곳 발견, 컨택포인트 보강 중...")
         for item in raw_items:
             biz = Business(region=region, name=item["name"], category=item["category"],
@@ -207,7 +228,7 @@ def crawl(regions, keyword, max_per_region, log=print):
 def save_excel(businesses, output_path, log=print):
     wb = Workbook()
     ws = wb.active
-    ws.title = "에스테틱 리스트"
+    ws.title = "업체 리스트"
     headers = ["지역", "업체명", "카테고리", "주소", "전화번호", "인스타그램",
                "카카오톡채널", "홈페이지", "첫방문이벤트", "출처(블로그)"]
     ws.append(headers)
@@ -229,16 +250,21 @@ def save_excel(businesses, output_path, log=print):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="네이버 오픈 API 기반 에스테틱 업체 크롤러")
-    parser.add_argument("--regions", nargs="+",
-                         default=["명동", "성수", "홍대", "강남", "압구정", "신사", "용산"])
+    parser = argparse.ArgumentParser(description="네이버 오픈 API 기반 업체 크롤러")
+    parser.add_argument("--city", default="서울", choices=sorted(REGION_ALIASES.keys()),
+                         help="지역 별칭 사전을 선택할 도시 (예: 서울, 부산)")
+    parser.add_argument("--regions", nargs="+", default=None,
+                         help="생략하면 --city의 기본 지역 목록을 사용한다")
     parser.add_argument("--keyword", default="에스테틱")
     parser.add_argument("--max-per-region", type=int, default=15)
-    parser.add_argument("--output", default="seoul_esthetic_list.xlsx")
+    parser.add_argument("--output", default=None)
     args = parser.parse_args()
 
-    businesses = crawl(args.regions, args.keyword, args.max_per_region)
-    save_excel(businesses, args.output)
+    regions = args.regions or DEFAULT_REGIONS.get(args.city, [args.city])
+    output = args.output or f"{args.city}_{args.keyword}_list.xlsx"
+
+    businesses = crawl(regions, args.keyword, args.max_per_region, city=args.city)
+    save_excel(businesses, output)
 
 
 if __name__ == "__main__":

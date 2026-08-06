@@ -15,11 +15,10 @@ from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request, send_file
 
-from naver_place_scraper import crawl, save_excel
+from naver_place_scraper import DEFAULT_REGIONS, crawl, save_excel
 
 app = Flask(__name__)
 
-MAJOR_REGIONS = ["명동", "성수", "홍대", "강남", "압구정", "신사", "용산"]
 RESULTS_DIR = Path(__file__).parent / "results"
 RESULTS_DIR.mkdir(exist_ok=True)
 
@@ -27,14 +26,14 @@ RESULTS_DIR.mkdir(exist_ok=True)
 JOBS = {}
 
 
-def run_job(job_id, regions, keywords, max_count):
+def run_job(job_id, regions, keywords, max_count, city):
     job = JOBS[job_id]
 
     def log(msg):
         job["logs"].append(msg)
 
     try:
-        businesses = crawl(regions, keywords, max_count, log=log)
+        businesses = crawl(regions, keywords, max_count, city=city, log=log)
         output_path = RESULTS_DIR / f"{job_id}.xlsx"
         save_excel(businesses, output_path, log=log)
         job["file"] = str(output_path)
@@ -46,12 +45,13 @@ def run_job(job_id, regions, keywords, max_count):
 
 @app.route("/")
 def index():
-    return render_template("index.html", major_regions=MAJOR_REGIONS)
+    return render_template("index.html", cities=DEFAULT_REGIONS)
 
 
 @app.route("/crawl", methods=["POST"])
 def start_crawl():
     data = request.get_json(force=True)
+    city = (data.get("city") or "서울").strip()
     checked = data.get("regions") or []
     custom_raw = data.get("custom_regions") or ""
     custom = [r.strip() for r in custom_raw.split(",") if r.strip()]
@@ -71,7 +71,7 @@ def start_crawl():
     job_id = uuid.uuid4().hex[:8]
     JOBS[job_id] = {"status": "running", "logs": [], "file": None}
     threading.Thread(
-        target=run_job, args=(job_id, regions, keywords, max_count), daemon=True
+        target=run_job, args=(job_id, regions, keywords, max_count, city), daemon=True
     ).start()
     return jsonify({"job_id": job_id})
 
@@ -89,7 +89,7 @@ def download(job_id):
     job = JOBS.get(job_id)
     if not job or not job.get("file"):
         return "아직 파일이 준비되지 않았어", 404
-    return send_file(job["file"], as_attachment=True, download_name="seoul_esthetic_list.xlsx")
+    return send_file(job["file"], as_attachment=True, download_name="crawl_list.xlsx")
 
 
 if __name__ == "__main__":

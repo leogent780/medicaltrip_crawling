@@ -32,6 +32,12 @@ ADDRESS_RE = re.compile(r"[가-힣]+(?:로|길)\s?\d+[^\n,]*")
 PHONE_RE = re.compile(r"0\d{1,2}-?\d{3,4}-?\d{4}")
 
 
+DEFAULT_REGIONS = {
+    "서울": ["명동", "성수", "홍대", "강남", "압구정", "신사", "용산"],
+    "부산": ["서면", "해운대", "동래", "남포동", "부산대", "연산동", "사상", "광안리"],
+}
+
+
 @dataclass
 class Place:
     region: str
@@ -153,8 +159,8 @@ def enrich_from_entry(frame, place, debug_dir=None, tag=""):
         frame.page.screenshot(path=str(debug_dir / f"{tag}_entry.png"))
 
 
-def crawl_region(page, region, keyword, max_count, debug_dir=None, log=print):
-    query = f"{region} {keyword}"
+def crawl_region(page, city, region, keyword, max_count, debug_dir=None, log=print):
+    query = f"{city} {region} {keyword}"
     log(f"[INFO] 검색: {query}")
     page.goto(f"https://map.naver.com/p/search/{query}", timeout=NAV_TIMEOUT)
     polite_sleep()
@@ -187,7 +193,7 @@ def crawl_region(page, region, keyword, max_count, debug_dir=None, log=print):
 def save_excel(places, output_path, log=print):
     wb = Workbook()
     ws = wb.active
-    ws.title = "에스테틱 리스트"
+    ws.title = "업체 리스트"
     headers = ["지역", "업체명", "카테고리", "주소", "전화번호", "인스타그램",
                "카카오톡채널", "홈페이지", "첫방문이벤트", "네이버플레이스"]
     ws.append(headers)
@@ -209,15 +215,20 @@ def save_excel(places, output_path, log=print):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="네이버 지도 에스테틱 업체 크롤러")
-    parser.add_argument("--regions", nargs="+",
-                         default=["명동", "성수", "홍대", "강남", "압구정", "신사", "용산"])
+    parser = argparse.ArgumentParser(description="네이버 지도 업체 크롤러")
+    parser.add_argument("--city", default="서울", choices=sorted(DEFAULT_REGIONS.keys()),
+                         help="기본 지역 목록을 고를 도시 (예: 서울, 부산)")
+    parser.add_argument("--regions", nargs="+", default=None,
+                         help="생략하면 --city의 기본 지역 목록을 사용한다")
     parser.add_argument("--keyword", default="에스테틱")
     parser.add_argument("--max-per-region", type=int, default=30)
-    parser.add_argument("--output", default="seoul_esthetic_list.xlsx")
+    parser.add_argument("--output", default=None)
     parser.add_argument("--headless", action="store_true", help="브라우저 창 없이 실행")
     parser.add_argument("--debug", action="store_true", help="단계별 스크린샷을 debug/ 에 저장")
     args = parser.parse_args()
+
+    regions = args.regions or DEFAULT_REGIONS.get(args.city, [args.city])
+    output = args.output or f"{args.city}_{args.keyword}_list.xlsx"
 
     debug_dir = None
     if args.debug:
@@ -228,15 +239,15 @@ def main():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=args.headless)
         page = browser.new_page()
-        for region in args.regions:
+        for region in regions:
             try:
-                places = crawl_region(page, region, args.keyword, args.max_per_region, debug_dir=debug_dir)
+                places = crawl_region(page, args.city, region, args.keyword, args.max_per_region, debug_dir=debug_dir)
                 all_places.extend(places)
             except Exception as e:
                 print(f"[ERROR] '{region}' 처리 중 오류: {e}")
         browser.close()
 
-    save_excel(all_places, args.output)
+    save_excel(all_places, output)
 
 
 if __name__ == "__main__":
