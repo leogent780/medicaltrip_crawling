@@ -37,7 +37,51 @@ REGION_ALIASES = {
     "압구정": ["압구정", "압구정로데오", "청담동"],
     "신사": ["신사동", "가로수길", "세로수길"],
     "용산": ["용산", "이태원", "한남동", "삼각지", "효창동", "서빙고동"],
+    # 서울 25개 자치구 전체 커버리지용(피부과처럼 상권 몇 곳이 아니라 도시 전역에
+    # 흩어진 업종을 훑을 때 --regions 전체 로 이 25곳 전부를 한 번에 돈다).
+    "강남구": ["강남구", "역삼동", "삼성동", "논현동", "청담동", "대치동", "도곡동", "압구정동"],
+    "강동구": ["강동구", "천호동", "길동", "성내동", "암사동", "명일동"],
+    "강북구": ["강북구", "수유동", "미아동", "번동"],
+    "강서구": ["강서구", "화곡동", "등촌동", "방화동", "마곡동", "발산동"],
+    "관악구": ["관악구", "신림동", "봉천동", "서울대입구"],
+    "광진구": ["광진구", "건대입구", "구의동", "자양동", "화양동"],
+    "구로구": ["구로구", "구로동", "신도림동", "개봉동"],
+    "금천구": ["금천구", "가산동", "시흥동", "독산동"],
+    "노원구": ["노원구", "상계동", "중계동", "하계동", "공릉동"],
+    "도봉구": ["도봉구", "창동", "방학동", "쌍문동"],
+    "동대문구": ["동대문구", "청량리동", "회기동", "답십리동", "장안동"],
+    "동작구": ["동작구", "사당동", "노량진동", "상도동", "흑석동"],
+    "마포구": ["마포구", "합정동", "연남동", "상수동", "공덕동"],
+    "서대문구": ["서대문구", "신촌", "홍제동", "연희동"],
+    "서초구": ["서초구", "서초동", "방배동", "잠원동", "반포동"],
+    "성동구": ["성동구", "성수동", "왕십리", "옥수동"],
+    "성북구": ["성북구", "성신여대입구", "길음동", "정릉동"],
+    "송파구": ["송파구", "잠실동", "문정동", "가락동", "방이동"],
+    "양천구": ["양천구", "목동", "신정동"],
+    "영등포구": ["영등포구", "여의도동", "당산동", "문래동"],
+    "용산구": ["용산구", "이태원동", "한남동", "삼각지"],
+    "은평구": ["은평구", "연신내", "불광동", "응암동"],
+    "종로구": ["종로구", "종로3가", "혜화동", "부암동"],
+    "중구": ["중구", "명동", "을지로", "신당동", "회현동"],
+    "중랑구": ["중랑구", "면목동", "상봉동", "망우동"],
 }
+
+# 서울 25개 자치구. --regions 전체(또는 서울전체/all)로 넘기면 이 리스트로 치환된다.
+SEOUL_ALL_DISTRICTS = [
+    "강남구", "강동구", "강북구", "강서구", "관악구", "광진구", "구로구", "금천구",
+    "노원구", "도봉구", "동대문구", "동작구", "마포구", "서대문구", "서초구", "성동구",
+    "성북구", "송파구", "양천구", "영등포구", "용산구", "은평구", "종로구", "중구", "중랑구",
+]
+ALL_REGIONS_ALIASES = {"전체", "서울전체", "all", "ALL"}
+
+
+def expand_all_seoul(regions):
+    """--regions에 '전체'/'서울전체'/'all'이 하나라도 있으면 서울 25개구 전체로 치환한다."""
+    if any(r in ALL_REGIONS_ALIASES for r in regions):
+        others = [r for r in regions if r not in ALL_REGIONS_ALIASES]
+        merged = SEOUL_ALL_DISTRICTS + [r for r in others if r not in SEOUL_ALL_DISTRICTS]
+        return merged
+    return regions
 
 INSTAGRAM_PATTERNS = [
     re.compile(r"instagram\.com/([A-Za-z0-9._]{2,30})"),
@@ -242,6 +286,10 @@ def crawl(regions, keywords, max_per_region, log=print, debug_dir=None):
     if not keywords:
         keywords = ["에스테틱"]
 
+    regions = expand_all_seoul(regions)
+    if len(regions) == len(SEOUL_ALL_DISTRICTS):
+        log(f"[INFO] '전체' 지정됨 -> 서울 25개 자치구 전체를 순회한다 ({len(regions)}곳)")
+
     session = make_session()
     all_places = {}
 
@@ -276,7 +324,7 @@ def crawl(regions, keywords, max_per_region, log=print, debug_dir=None):
 def save_excel(places, output_path, log=print):
     wb = Workbook()
     ws = wb.active
-    ws.title = "에스테틱 리스트"
+    ws.title = "업체 리스트"
     headers = ["지역", "업체명", "검색키워드", "주소", "전화번호", "인스타그램",
                "카카오톡채널", "첫방문이벤트", "네이버플레이스ID"]
     ws.append(headers)
@@ -300,9 +348,11 @@ def save_excel(places, output_path, log=print):
 def main():
     parser = argparse.ArgumentParser(description="네이버 검색/플레이스 HTTP 기반 에스테틱 크롤러")
     parser.add_argument("--regions", nargs="+",
-                         default=["명동", "성수", "홍대", "강남", "압구정", "신사", "용산"])
+                         default=["명동", "성수", "홍대", "강남", "압구정", "신사", "용산"],
+                         help="지역명 목록. '전체'(또는 서울전체/all) 하나만 넣으면 "
+                              "서울 25개 자치구 전체를 순회한다. 예: --regions 전체")
     parser.add_argument("--keywords", nargs="+", default=["에스테틱"],
-                         help="예: --keywords 에스테틱 스파 마사지 헤어 메이크업")
+                         help="예: --keywords 피부과  또는  --keywords 에스테틱 스파 마사지")
     parser.add_argument("--max-per-region", type=int, default=15)
     parser.add_argument("--output", default="seoul_esthetic_list.xlsx")
     parser.add_argument("--debug", action="store_true",

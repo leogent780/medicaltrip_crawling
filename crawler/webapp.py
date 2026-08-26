@@ -89,7 +89,7 @@ def download(job_id):
     job = JOBS.get(job_id)
     if not job or not job.get("file"):
         return "아직 파일이 준비되지 않았어", 404
-    return send_file(job["file"], as_attachment=True, download_name="seoul_esthetic_list.xlsx")
+    return send_file(job["file"], as_attachment=True, download_name="seoul_business_list.xlsx")
 
 
 if __name__ == "__main__":

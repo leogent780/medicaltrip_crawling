@@ -26,13 +26,13 @@
   <label class="region"><input type="checkbox" name="region" value="{{ r }}" checked> {{ r }}</label>
   {% endfor %}
   <div style="margin-top:8px;">
-    <label>추가 지역(콤마로 구분): <input type="text" id="custom_regions" placeholder="예: 이태원, 잠실" style="width:260px;"></label>
+    <label>추가 지역(콤마로 구분): <input type="text" id="custom_regions" placeholder="예: 이태원, 잠실 (또는 '전체' 입력 시 서울 25개 자치구 전체)" style="width:340px;"></label>
   </div>
 </fieldset>
 
 <fieldset>
   <legend>검색 옵션</legend>
-  <label>키워드: <input type="text" id="keyword" value="에스테틱" style="width:260px;" placeholder="콤마로 여러 개: 에스테틱, 스파, 마사지, 헤어, 메이크업"></label>
+  <label>키워드: <input type="text" id="keyword" value="에스테틱" style="width:260px;" placeholder="콤마로 여러 개: 피부과  또는  에스테틱, 스파, 마사지"></label>
   &nbsp;&nbsp;
   <label>키워드당 개수: <input type="number" id="max_count" value="15" min="1" max="100" style="width:70px;"></label>
   <div style="font-size:12px; color:#888; margin-top:4px;">콤마로 여러 키워드 입력 가능 (예: 에스테틱, 스파, 마사지). 지역 x 키워드 조합마다 최대 입력한 개수만큼 찾고, 겹치는 업체는 자동으로 합쳐진다.</div>
